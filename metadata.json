@@ -1,0 +1,6 @@
+{
+  "name": "BikeRoute",
+  "description": "Smart cycling route planner with zero-cost elevation-aware routing, live GPS tracking, and social media export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
