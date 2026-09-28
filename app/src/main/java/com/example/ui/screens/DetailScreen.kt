@@ -2,32 +2,34 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -48,10 +52,16 @@ import com.example.data.local.TrackPointConverter
 import com.example.ui.components.ElevationChart
 import com.example.ui.components.OsmMapView
 import com.example.ui.components.StatCard
-import com.example.ui.theme.AmberAccent
-import com.example.ui.theme.CyanAccent
-import com.example.ui.theme.EmeraldPrimary
-import com.example.ui.theme.RoseAccent
+import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.ElectricCoral
+import com.example.ui.theme.GlassBorderSubtle
+import com.example.ui.theme.HyperLime
+import com.example.ui.theme.ObsidianNavy
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.StravaOrange
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.glassmorphic
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,10 +84,10 @@ fun DetailScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(ObsidianNavy),
             contentAlignment = Alignment.Center
         ) {
-            Text("Activity not found", style = MaterialTheme.typography.titleMedium)
+            Text("Activity not found", style = MaterialTheme.typography.titleMedium, color = PureWhite)
         }
         return
     }
@@ -99,49 +109,66 @@ fun DetailScreen(
     val seconds = currentActivity.durationSeconds % 60
     val durationFormatted = if (hours > 0) "%02d:%02d:%02d".format(hours, minutes, seconds) else "%02d:%02d".format(minutes, seconds)
 
-    val dateFormatted = SimpleDateFormat("EEEE, MMM d, yyyy • h:mm a", Locale.US).format(Date(currentActivity.startTime))
+    val dateFormatted = SimpleDateFormat("EEEE, MMMM d, yyyy • h:mm a", Locale.US).format(Date(currentActivity.startTime))
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(ObsidianNavy)
+            .padding(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp
+            )
     ) {
-        // Top Bar
+        // Top Action Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 40.dp),
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(
-                onClick = onNavigateBack,
+            Box(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), CircleShape)
-                    .size(40.dp)
+                    .size(42.dp)
+                    .glassmorphic(cornerRadius = 21.dp, backgroundColor = Color(0xCC131A29))
+                    .clickable { onNavigateBack() },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = PureWhite,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             Text(
-                text = "RIDE DETAILS",
+                text = "RIDE BREAKDOWN",
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = EmeraldPrimary,
-                letterSpacing = 1.2.sp
+                fontWeight = FontWeight.Black,
+                color = HyperLime,
+                letterSpacing = 1.5.sp
             )
 
-            IconButton(
-                onClick = { showDeleteDialog = true },
+            Box(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), CircleShape)
-                    .size(40.dp)
+                    .size(42.dp)
+                    .glassmorphic(cornerRadius = 21.dp, backgroundColor = Color(0xCC131A29))
+                    .clickable { showDeleteDialog = true },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = RoseAccent)
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = ElectricCoral,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
-        // Scrollable Content
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Scrollable Body
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -150,25 +177,28 @@ fun DetailScreen(
         ) {
             Text(
                 text = currentActivity.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Black,
+                color = PureWhite
             )
             Text(
                 text = dateFormatted,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TextSecondary
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Interactive Map View of completed route
-            Card(
+            // Map View Card
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(240.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    .height(260.dp)
+                    .glassmorphic(
+                        cornerRadius = 28.dp,
+                        backgroundColor = Color(0xFF0F172A),
+                        borderColor = GlassBorderSubtle
+                    )
             ) {
                 OsmMapView(
                     modifier = Modifier.fillMaxSize(),
@@ -179,7 +209,7 @@ fun DetailScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Telemetry Grid
+            // 6-Metric Telemetry Grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -188,12 +218,14 @@ fun DetailScreen(
                     title = "Distance",
                     value = "%.2f".format(distanceKm),
                     unit = "km",
+                    valueColor = HyperLime,
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
                     title = "Time",
                     value = durationFormatted,
                     unit = "",
+                    valueColor = CyberCyan,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -225,55 +257,64 @@ fun DetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StatCard(
-                    title = "Elevation Gain",
+                    title = "Elevation",
                     value = "+%.0f".format(currentActivity.elevationGainMeters),
                     unit = "m",
-                    iconTint = AmberAccent,
+                    iconTint = StravaOrange,
+                    valueColor = StravaOrange,
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
-                    title = "Energy",
+                    title = "Calories",
                     value = "${currentActivity.caloriesBurned}",
                     unit = "kcal",
-                    iconTint = RoseAccent,
+                    iconTint = ElectricCoral,
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Elevation Area Profile
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    ElevationChart(
-                        elevationProfile = elevationProfile,
-                        modifier = Modifier.fillMaxWidth()
+            // Elevation Canvas Chart
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassmorphic(
+                        cornerRadius = 24.dp,
+                        backgroundColor = Color(0xCC131A29),
+                        borderColor = GlassBorderSubtle
                     )
-                }
+                    .padding(18.dp)
+            ) {
+                ElevationChart(
+                    elevationProfile = elevationProfile,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Share & Export Button
+            // Large Pill Button: Share 9:16 Story / GPX
             Button(
                 onClick = { showExportSheet = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
+                    .shadow(12.dp, RoundedCornerShape(28.dp), spotColor = HyperLime)
                     .testTag("share_export_button"),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = HyperLime,
+                    contentColor = ObsidianNavy
+                )
             ) {
-                Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "SHARE 9:16 STORY / EXPORT GPX",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    text = "SHARE STORY OR EXPORT GPX",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
                 )
             }
 
@@ -291,22 +332,38 @@ fun DetailScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Ride Activity?") },
-            text = { Text("This will permanently remove this ride and telemetry from your local database.") },
+            containerColor = Color(0xFF131A29),
+            title = {
+                Text(
+                    text = "Delete Activity?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = PureWhite
+                )
+            },
+            text = {
+                Text(
+                    text = "This will permanently remove this ride and telemetry from your local database.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         viewModel.deleteActivity(currentActivity.id)
                         showDeleteDialog = false
                         onNavigateBack()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricCoral),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text("Delete", color = RoseAccent, fontWeight = FontWeight.Bold)
+                    Text("DELETE", fontWeight = FontWeight.Black)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
+                    Text("CANCEL", color = TextSecondary)
                 }
             }
         )

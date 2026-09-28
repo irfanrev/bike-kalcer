@@ -12,11 +12,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,12 +41,8 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -56,20 +55,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.ui.screens.AppInfoScreen
+import com.example.ui.screens.AppInfoType
 import com.example.ui.screens.DetailScreen
-import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.HomeScreenUI
 import com.example.ui.screens.HistoryScreen
-import com.example.ui.screens.TrackingScreen
+import com.example.ui.screens.SplashScreen
+import com.example.ui.screens.TrackingScreenUI
 import com.example.ui.theme.BikeRouteTheme
-import com.example.ui.theme.EmeraldLight
-import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.GlassBorderSubtle
+import com.example.ui.theme.HyperLime
+import com.example.ui.theme.ObsidianNavy
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.StravaOrange
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.glassmorphic
 import com.example.ui.viewmodel.MainViewModel
 import com.google.android.gms.location.LocationServices
 
@@ -77,7 +89,8 @@ enum class ScreenTab {
     PLANNER,
     TRACKING,
     HISTORY,
-    DETAIL
+    DETAIL,
+    APP_INFO
 }
 
 class MainActivity : ComponentActivity() {
@@ -91,10 +104,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             BikeRouteTheme {
                 val context = LocalContext.current
+                var showSplash by remember { mutableStateOf(true) }
                 var currentTab by remember { mutableStateOf(ScreenTab.PLANNER) }
+                var selectedInfoType by remember { mutableStateOf(AppInfoType.ABOUT_APP) }
                 val trackingState by viewModel.trackingState.collectAsState()
 
-                // Request location and notification permissions at startup
+                // Permission Requests
                 val permissionsToRequest = remember {
                     val list = mutableListOf(
                         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -128,123 +143,166 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                    bottomBar = {
-                        // Show bottom navigation bar when not on full cockpit screen
-                        if (currentTab != ScreenTab.TRACKING && currentTab != ScreenTab.DETAIL) {
-                            Column {
-                                // Live Ride floating mini bar if tracking in background
-                                AnimatedVisibility(
-                                    visible = trackingState.isTracking,
-                                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-                                ) {
-                                    Surface(
+                Crossfade(targetState = showSplash, label = "splashTransition") { isSplash ->
+                    if (isSplash) {
+                        SplashScreen(
+                            onSplashCompleted = { showSplash = false }
+                        )
+                    } else {
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize(),
+                            containerColor = ObsidianNavy,
+                            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                            bottomBar = {
+                                if (currentTab != ScreenTab.TRACKING && currentTab != ScreenTab.DETAIL && currentTab != ScreenTab.APP_INFO) {
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                                            .clickable { currentTab = ScreenTab.TRACKING }
-                                            .testTag("ride_banner_return_to_cockpit"),
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = EmeraldPrimary,
-                                        shadowElevation = 6.dp
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
+                                            .padding(bottom = 12.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        // Floating Ride In Progress Banner
+                                        AnimatedVisibility(
+                                            visible = trackingState.isTracking,
+                                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(10.dp)
-                                                        .background(Color.White, CircleShape)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                                                    .glassmorphic(
+                                                        cornerRadius = 24.dp,
+                                                        backgroundColor = Color(0xF2161F30),
+                                                        borderColor = StravaOrange.copy(alpha = 0.5f),
+                                                        elevation = 12.dp
+                                                    )
+                                                    .clickable { currentTab = ScreenTab.TRACKING }
+                                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                                    .testTag("ride_banner_return_to_cockpit")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(10.dp)
+                                                                .clip(CircleShape)
+                                                                .background(StravaOrange)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Text(
+                                                            text = "RECORDING: ${trackingState.formattedTime} • %.2f km".format(trackingState.distanceKm),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = PureWhite,
+                                                            letterSpacing = 0.5.sp
+                                                        )
+                                                    }
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = "COCKPIT",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = HyperLime
+                                                        )
+                                                        Icon(
+                                                            imageVector = Icons.Default.ChevronRight,
+                                                            contentDescription = "Return",
+                                                            tint = HyperLime,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Floating Glassmorphic Pill Navigation Bar
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 24.dp)
+                                                .glassmorphic(
+                                                    cornerRadius = 32.dp,
+                                                    backgroundColor = Color(0xEE121824),
+                                                    borderColor = GlassBorderSubtle,
+                                                    elevation = 16.dp
                                                 )
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Text(
-                                                    text = "RIDE IN PROGRESS: ${trackingState.formattedTime} • %.2f km".format(trackingState.distanceKm),
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceAround,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                GenZNavItem(
+                                                    selected = currentTab == ScreenTab.PLANNER,
+                                                    icon = Icons.Default.Map,
+                                                    label = "EXPLORE",
+                                                    testTag = "nav_item_planner",
+                                                    onClick = { currentTab = ScreenTab.PLANNER }
+                                                )
+                                                GenZNavItem(
+                                                    selected = currentTab == ScreenTab.TRACKING,
+                                                    icon = Icons.Default.DirectionsBike,
+                                                    label = "RIDE",
+                                                    testTag = "nav_item_tracker",
+                                                    onClick = { currentTab = ScreenTab.TRACKING }
+                                                )
+                                                GenZNavItem(
+                                                    selected = currentTab == ScreenTab.HISTORY,
+                                                    icon = Icons.Default.History,
+                                                    label = "STATS",
+                                                    testTag = "nav_item_history",
+                                                    onClick = { currentTab = ScreenTab.HISTORY }
                                                 )
                                             }
-                                            Icon(
-                                                imageVector = Icons.Default.ChevronRight,
-                                                contentDescription = "Return",
-                                                tint = Color.White
-                                            )
                                         }
                                     }
                                 }
-
-                                NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 8.dp
-                                ) {
-                                    NavigationBarItem(
-                                        selected = currentTab == ScreenTab.PLANNER,
-                                        onClick = { currentTab = ScreenTab.PLANNER },
-                                        icon = { Icon(Icons.Default.Map, contentDescription = "Planner") },
-                                        label = { Text("Route Planner") },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = EmeraldPrimary,
-                                            indicatorColor = EmeraldPrimary.copy(alpha = 0.15f)
-                                        ),
-                                        modifier = Modifier.testTag("nav_item_planner")
+                            }
+                        ) { innerPadding ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(innerPadding)
+                            ) {
+                                when (currentTab) {
+                                    ScreenTab.PLANNER -> HomeScreenUI(
+                                        viewModel = viewModel,
+                                        onNavigateToTracking = { currentTab = ScreenTab.TRACKING }
                                     )
-                                    NavigationBarItem(
-                                        selected = currentTab == ScreenTab.TRACKING,
-                                        onClick = { currentTab = ScreenTab.TRACKING },
-                                        icon = { Icon(Icons.Default.DirectionsBike, contentDescription = "Tracker") },
-                                        label = { Text("Live Ride") },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = EmeraldPrimary,
-                                            indicatorColor = EmeraldPrimary.copy(alpha = 0.15f)
-                                        ),
-                                        modifier = Modifier.testTag("nav_item_tracker")
+                                    ScreenTab.TRACKING -> TrackingScreenUI(
+                                        viewModel = viewModel,
+                                        onNavigateBack = { currentTab = ScreenTab.PLANNER },
+                                        onRideFinished = { savedId ->
+                                            currentTab = ScreenTab.DETAIL
+                                        }
                                     )
-                                    NavigationBarItem(
-                                        selected = currentTab == ScreenTab.HISTORY,
-                                        onClick = { currentTab = ScreenTab.HISTORY },
-                                        icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                                        label = { Text("Activities") },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = EmeraldPrimary,
-                                            indicatorColor = EmeraldPrimary.copy(alpha = 0.15f)
-                                        ),
-                                        modifier = Modifier.testTag("nav_item_history")
+                                    ScreenTab.HISTORY -> HistoryScreen(
+                                        viewModel = viewModel,
+                                        onActivityClick = { id ->
+                                            viewModel.loadActivityDetail(id)
+                                            currentTab = ScreenTab.DETAIL
+                                        },
+                                        onNavigateToInfo = { infoType ->
+                                            selectedInfoType = infoType
+                                            currentTab = ScreenTab.APP_INFO
+                                        }
+                                    )
+                                    ScreenTab.DETAIL -> DetailScreen(
+                                        viewModel = viewModel,
+                                        onNavigateBack = { currentTab = ScreenTab.HISTORY }
+                                    )
+                                    ScreenTab.APP_INFO -> AppInfoScreen(
+                                        type = selectedInfoType,
+                                        onNavigateBack = { currentTab = ScreenTab.HISTORY }
                                     )
                                 }
                             }
-                        }
-                    }
-                ) { innerPadding ->
-                    Box(modifier = Modifier.padding(innerPadding)) {
-                        when (currentTab) {
-                            ScreenTab.PLANNER -> HomeScreen(
-                                viewModel = viewModel,
-                                onNavigateToTracking = { currentTab = ScreenTab.TRACKING }
-                            )
-                            ScreenTab.TRACKING -> TrackingScreen(
-                                viewModel = viewModel,
-                                onNavigateBack = { currentTab = ScreenTab.PLANNER },
-                                onRideFinished = { savedActivityId ->
-                                    currentTab = ScreenTab.DETAIL
-                                }
-                            )
-                            ScreenTab.HISTORY -> HistoryScreen(
-                                viewModel = viewModel,
-                                onActivityClick = { id ->
-                                    viewModel.loadActivityDetail(id)
-                                    currentTab = ScreenTab.DETAIL
-                                }
-                            )
-                            ScreenTab.DETAIL -> DetailScreen(
-                                viewModel = viewModel,
-                                onNavigateBack = { currentTab = ScreenTab.HISTORY }
-                            )
                         }
                     }
                 }
@@ -263,6 +321,44 @@ class MainActivity : ComponentActivity() {
             }
         } catch (e: Exception) {
             // Ignore if unavailable
+        }
+    }
+}
+
+@Composable
+private fun GenZNavItem(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) HyperLime else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) ObsidianNavy else TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+            if (selected) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    color = ObsidianNavy,
+                    letterSpacing = 1.sp
+                )
+            }
         }
     }
 }

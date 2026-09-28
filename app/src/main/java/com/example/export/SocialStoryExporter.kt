@@ -1,5 +1,6 @@
 package com.example.export
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -11,6 +12,10 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.example.model.TrackPoint
@@ -22,14 +27,126 @@ import java.util.Locale
 
 object SocialStoryExporter {
 
-    private const val STORY_WIDTH = 1080
-    private const val STORY_HEIGHT = 1920
+    const val STORY_WIDTH = 1080
+    const val STORY_HEIGHT = 1920
 
     enum class StoryStyle {
-        TRANSPARENT_OVERLAY,
-        POSTER_GRAPHIC
+        CYBER_NEON_POSTER,
+        MINIMALIST_HUD_OVERLAY,
+        ATHLETIC_PERFORMANCE_CARD
     }
 
+    /**
+     * Generates a 1080x1920 (9:16) Bitmap for in-app preview or export.
+     */
+    fun generateBitmap(
+        style: StoryStyle,
+        title: String,
+        distanceKm: Double,
+        durationSeconds: Long,
+        avgSpeedKmh: Double,
+        maxSpeedKmh: Double,
+        elevationGainM: Double,
+        calories: Int,
+        startTime: Long,
+        points: List<TrackPoint>
+    ): Bitmap {
+        return when (style) {
+            StoryStyle.CYBER_NEON_POSTER -> renderCyberNeonPoster(
+                title = title,
+                distanceKm = distanceKm,
+                durationSeconds = durationSeconds,
+                avgSpeedKmh = avgSpeedKmh,
+                elevationGainM = elevationGainM,
+                startTime = startTime,
+                points = points
+            )
+            StoryStyle.MINIMALIST_HUD_OVERLAY -> renderMinimalistHudOverlay(
+                points = points,
+                distanceKm = distanceKm,
+                durationSeconds = durationSeconds,
+                avgSpeedKmh = avgSpeedKmh,
+                elevationGainM = elevationGainM
+            )
+            StoryStyle.ATHLETIC_PERFORMANCE_CARD -> renderAthleticPerformanceCard(
+                title = title,
+                distanceKm = distanceKm,
+                durationSeconds = durationSeconds,
+                avgSpeedKmh = avgSpeedKmh,
+                maxSpeedKmh = maxSpeedKmh,
+                elevationGainM = elevationGainM,
+                calories = calories,
+                startTime = startTime,
+                points = points
+            )
+        }
+    }
+
+    /**
+     * Downloads/saves the generated 9:16 story image directly to the user's Gallery (Pictures/BikeRoute).
+     */
+    fun saveStoryToGallery(
+        context: Context,
+        style: StoryStyle,
+        title: String,
+        distanceKm: Double,
+        durationSeconds: Long,
+        avgSpeedKmh: Double,
+        maxSpeedKmh: Double,
+        elevationGainM: Double,
+        calories: Int,
+        startTime: Long,
+        points: List<TrackPoint>
+    ): Boolean {
+        return try {
+            val bitmap = generateBitmap(
+                style = style,
+                title = title,
+                distanceKm = distanceKm,
+                durationSeconds = durationSeconds,
+                avgSpeedKmh = avgSpeedKmh,
+                maxSpeedKmh = maxSpeedKmh,
+                elevationGainM = elevationGainM,
+                calories = calories,
+                startTime = startTime,
+                points = points
+            )
+
+            val fileName = "bikeroute_${style.name.lowercase()}_${System.currentTimeMillis()}"
+            val resolver = context.contentResolver
+
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "$fileName.png")
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/BikeRoute")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                ?: return false
+
+            resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            }
+
+            true
+        } catch (e: Exception) {
+            Log.e("SocialStoryExporter", "Failed to save image to gallery: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Exports the 9:16 story image and fires an ACTION_SEND Intent chooser (Instagram, Stories, WhatsApp).
+     */
     fun exportAndShareStory(
         context: Context,
         style: StoryStyle,
@@ -44,33 +161,25 @@ object SocialStoryExporter {
         points: List<TrackPoint>
     ): Boolean {
         try {
-            val bitmap = when (style) {
-                StoryStyle.TRANSPARENT_OVERLAY -> renderTransparentOverlay(
-                    points = points,
-                    distanceKm = distanceKm,
-                    durationSeconds = durationSeconds,
-                    avgSpeedKmh = avgSpeedKmh,
-                    elevationGainM = elevationGainM
-                )
-                StoryStyle.POSTER_GRAPHIC -> renderPosterGraphic(
-                    title = title,
-                    distanceKm = distanceKm,
-                    durationSeconds = durationSeconds,
-                    avgSpeedKmh = avgSpeedKmh,
-                    maxSpeedKmh = maxSpeedKmh,
-                    elevationGainM = elevationGainM,
-                    calories = calories,
-                    startTime = startTime,
-                    points = points
-                )
-            }
+            val bitmap = generateBitmap(
+                style = style,
+                title = title,
+                distanceKm = distanceKm,
+                durationSeconds = durationSeconds,
+                avgSpeedKmh = avgSpeedKmh,
+                maxSpeedKmh = maxSpeedKmh,
+                elevationGainM = elevationGainM,
+                calories = calories,
+                startTime = startTime,
+                points = points
+            )
 
             val imagesDir = File(context.cacheDir, "images")
             if (!imagesDir.exists()) {
                 imagesDir.mkdirs()
             }
 
-            val prefix = if (style == StoryStyle.TRANSPARENT_OVERLAY) "story_overlay" else "story_poster"
+            val prefix = style.name.lowercase()
             val file = File(imagesDir, "${prefix}_${System.currentTimeMillis()}.png")
 
             FileOutputStream(file).use { out ->
@@ -86,12 +195,12 @@ object SocialStoryExporter {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, contentUri)
-                putExtra(Intent.EXTRA_SUBJECT, "BikeRoute Activity Story: $title")
-                putExtra(Intent.EXTRA_TEXT, "Cycling ride recorded with BikeRoute! 🚴\nDistance: ${"%.2f".format(distanceKm)} km • Time: ${formatDuration(durationSeconds)}")
+                putExtra(Intent.EXTRA_SUBJECT, "BikeRoute Story: $title")
+                putExtra(Intent.EXTRA_TEXT, "Cycling ride tracked with BikeRoute! 🚴\nDistance: ${"%.2f".format(distanceKm)} km • Time: ${formatDuration(durationSeconds)}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            val chooser = Intent.createChooser(shareIntent, "Share Story via")
+            val chooser = Intent.createChooser(shareIntent, "Share Story to Instagram")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(chooser)
             return true
@@ -101,7 +210,116 @@ object SocialStoryExporter {
         }
     }
 
-    private fun renderTransparentOverlay(
+    // ==========================================
+    // OPTION 1: CYBER NEON POSTER (DARK & EDGY)
+    // ==========================================
+    private fun renderCyberNeonPoster(
+        title: String,
+        distanceKm: Double,
+        durationSeconds: Long,
+        avgSpeedKmh: Double,
+        elevationGainM: Double,
+        startTime: Long,
+        points: List<TrackPoint>
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(STORY_WIDTH, STORY_HEIGHT, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        // Deep gradient canvas (#0B0F17 to #1E293B)
+        val bgPaint = Paint().apply {
+            shader = LinearGradient(
+                0f, 0f, 0f, STORY_HEIGHT.toFloat(),
+                intArrayOf(
+                    Color.rgb(11, 15, 23),   // #0B0F17
+                    Color.rgb(19, 26, 41),   // Mid Obsidian
+                    Color.rgb(30, 41, 59)    // #1E293B
+                ),
+                floatArrayOf(0f, 0.55f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, STORY_WIDTH.toFloat(), STORY_HEIGHT.toFloat(), bgPaint)
+
+        // Subtle background athletic grid lines
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(14, 255, 255, 255)
+            strokeWidth = 2f
+        }
+        for (y in 240..1700 step 180) {
+            canvas.drawLine(60f, y.toFloat(), 1020f, y.toFloat(), gridPaint)
+        }
+
+        // Top Header
+        val brandTag = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD4FF00.toInt() // Hyper Lime
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            letterSpacing = 0.2f
+        }
+        canvas.drawText("BIKEROUTE // CYBER TELEMETRY", 90f, 160f, brandTag)
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 58f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText(title.take(24), 90f, 236f, titlePaint)
+
+        val dateStr = SimpleDateFormat("EEEE, MMM d • h:mm a", Locale.US).format(Date(startTime))
+        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(148, 163, 184)
+            textSize = 28f
+        }
+        canvas.drawText(dateStr, 90f, 290f, datePaint)
+
+        // Center Route Artwork (Neon Glow Polyline)
+        val routeBounds = RectF(100f, 360f, 980f, 1180f)
+        drawProjectedRoute(
+            canvas = canvas,
+            points = points,
+            bounds = routeBounds,
+            strokeColor = 0xFFD4FF00.toInt(), // Hyper Lime
+            glowColor = 0x88FF5722.toInt(),   // Strava Orange Glow
+            strokeWidth = 16f
+        )
+
+        // Bold Typography Overlay Badges at bottom
+        val cardRect = RectF(80f, 1260f, 1000f, 1660f)
+        val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(210, 19, 26, 41)
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(60, 255, 255, 255)
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+        }
+        canvas.drawRoundRect(cardRect, 40f, 40f, cardPaint)
+        canvas.drawRoundRect(cardRect, 40f, 40f, borderPaint)
+
+        // Telemetry Grid
+        drawBigMetric(canvas, "DISTANCE", "%.2f km".format(distanceKm), 140f, 1370f, 0xFFD4FF00.toInt())
+        drawBigMetric(canvas, "DURATION", formatDuration(durationSeconds), 580f, 1370f, Color.WHITE)
+        drawBigMetric(canvas, "AVG SPEED", "%.1f km/h".format(avgSpeedKmh), 140f, 1530f, 0xFF00F2FE.toInt())
+        drawBigMetric(canvas, "ELEV GAIN", "+%.0f m".format(elevationGainM), 580f, 1530f, 0xFFFF5722.toInt())
+
+        // Bottom Minimalist BIKEROUTE Watermark
+        val watermark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(100, 116, 139)
+            textSize = 28f
+            letterSpacing = 0.25f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("BIKEROUTE • RIDE. TRACK. SHARE.", 540f, 1780f, watermark)
+
+        return bitmap
+    }
+
+    // ==========================================
+    // OPTION 2: MINIMALIST HUD OVERLAY (TRANSPARENT)
+    // ==========================================
+    private fun renderMinimalistHudOverlay(
         points: List<TrackPoint>,
         distanceKm: Double,
         durationSeconds: Long,
@@ -110,52 +328,56 @@ object SocialStoryExporter {
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(STORY_WIDTH, STORY_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        // Background is completely transparent
+        // Background is completely transparent for overlaying on user's riding photos
 
-        // Draw Route in the center
-        val routeBounds = RectF(120f, 380f, 960f, 1220f)
+        // Glowing center route artwork
+        val routeBounds = RectF(120f, 380f, 960f, 1200f)
         drawProjectedRoute(
             canvas = canvas,
             points = points,
             bounds = routeBounds,
-            strokeColor = 0xFF10B981.toInt(), // Neon Emerald
-            glowColor = 0x8806B6D4.toInt(),   // Glow Cyan
-            strokeWidth = 14f
+            strokeColor = 0xFFD4FF00.toInt(),
+            glowColor = 0xAA00F2FE.toInt(),
+            strokeWidth = 16f
         )
 
-        // Draw Translucent Glassmorphic Metric Badges at bottom
-        val cardRect = RectF(80f, 1300f, 1000f, 1680f)
-        val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(190, 15, 23, 42) // Dark translucent slate
+        // Translucent Frosted Glass HUD Card with Drop Shadow
+        val hudRect = RectF(80f, 1280f, 1000f, 1680f)
+        val hudPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(195, 11, 15, 23)
             style = Paint.Style.FILL
+            setShadowLayer(32f, 0f, 12f, Color.argb(160, 0, 0, 0))
         }
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(120, 255, 255, 255)
+            color = Color.argb(90, 255, 255, 255)
             style = Paint.Style.STROKE
             strokeWidth = 3f
         }
-        canvas.drawRoundRect(cardRect, 48f, 48f, cardPaint)
-        canvas.drawRoundRect(cardRect, 48f, 48f, borderPaint)
+        canvas.drawRoundRect(hudRect, 48f, 48f, hudPaint)
+        canvas.drawRoundRect(hudRect, 48f, 48f, borderPaint)
 
-        // 2x2 Telemetry inside badge
-        drawMetric(canvas, "DISTANCE", "%.2f km".format(distanceKm), 140f, 1420f)
-        drawMetric(canvas, "TIME", formatDuration(durationSeconds), 580f, 1420f)
-        drawMetric(canvas, "AVG SPEED", "%.1f km/h".format(avgSpeedKmh), 140f, 1580f)
-        drawMetric(canvas, "ELEVATION GAIN", "+%.0f m".format(elevationGainM), 580f, 1580f)
+        // Clean white typography with drop shadows
+        drawBigMetric(canvas, "DISTANCE", "%.2f km".format(distanceKm), 140f, 1400f, Color.WHITE)
+        drawBigMetric(canvas, "TIME", formatDuration(durationSeconds), 580f, 1400f, 0xFFD4FF00.toInt())
+        drawBigMetric(canvas, "AVG SPEED", "%.1f km/h".format(avgSpeedKmh), 140f, 1560f, Color.WHITE)
+        drawBigMetric(canvas, "ELEV GAIN", "+%.0f m".format(elevationGainM), 580f, 1560f, 0xFFFF5722.toInt())
 
-        // Watermark logo top
-        val brandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Top watermark badge
+        val watermark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 38f
+            textSize = 36f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setShadowLayer(8f, 0f, 4f, Color.argb(180, 0, 0, 0))
+            setShadowLayer(10f, 0f, 4f, Color.BLACK)
         }
-        canvas.drawText("BIKEROUTE 🚴", 100f, 180f, brandPaint)
+        canvas.drawText("BIKEROUTE 🚴", 100f, 180f, watermark)
 
         return bitmap
     }
 
-    private fun renderPosterGraphic(
+    // ==========================================
+    // OPTION 3: ATHLETIC PERFORMANCE CARD (CLEAN & MODERN)
+    // ==========================================
+    private fun renderAthleticPerformanceCard(
         title: String,
         distanceKm: Double,
         durationSeconds: Long,
@@ -169,105 +391,85 @@ object SocialStoryExporter {
         val bitmap = Bitmap.createBitmap(STORY_WIDTH, STORY_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        // Background Athletic Gradient
+        // Solid Athletic Obsidian Canvas
         val bgPaint = Paint().apply {
-            shader = LinearGradient(
-                0f, 0f, 0f, STORY_HEIGHT.toFloat(),
-                intArrayOf(
-                    Color.rgb(15, 23, 42),   // Dark Navy #0F172A
-                    Color.rgb(24, 34, 53),   // Mid Slate
-                    Color.rgb(11, 17, 32)    // Deep Midnight #0B1120
-                ),
-                floatArrayOf(0f, 0.45f, 1f),
-                Shader.TileMode.CLAMP
-            )
+            color = Color.rgb(11, 15, 23)
         }
         canvas.drawRect(0f, 0f, STORY_WIDTH.toFloat(), STORY_HEIGHT.toFloat(), bgPaint)
 
-        // Geometric tech lines in background
-        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(16, 255, 255, 255)
-            strokeWidth = 2f
-            style = Paint.Style.STROKE
-        }
-        for (y in 200..1800 step 160) {
-            canvas.drawLine(60f, y.toFloat(), 1020f, y.toFloat(), gridPaint)
-        }
-
-        // Header Section
-        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 58f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF10B981.toInt() // Emerald
-            textSize = 28f
-            letterSpacing = 0.15f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(148, 163, 184) // Slate 400
-            textSize = 28f
-        }
-
-        canvas.drawText("BIKEROUTE // RIDE TELEMETRY", 80f, 150f, subPaint)
-        canvas.drawText(title.take(24), 80f, 225f, titlePaint)
-
-        val dateStr = SimpleDateFormat("EEEE, MMM d, yyyy • h:mm a", Locale.US).format(Date(startTime))
-        canvas.drawText(dateStr, 80f, 280f, datePaint)
-
-        // Route Map Snippet Box in the center
-        val mapBoxRect = RectF(80f, 340f, 1000f, 1080f)
-        val mapBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(160, 30, 41, 59)
+        // Top Card Frame: Map Snippet Snapshot (80..760)
+        val mapBox = RectF(70f, 140f, 1010f, 760f)
+        val mapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(19, 26, 41)
             style = Paint.Style.FILL
         }
-        val mapBoxStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(60, 255, 255, 255)
+        val mapBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(50, 255, 255, 255)
             style = Paint.Style.STROKE
-            strokeWidth = 2f
+            strokeWidth = 2.5f
         }
-        canvas.drawRoundRect(mapBoxRect, 36f, 36f, mapBoxPaint)
-        canvas.drawRoundRect(mapBoxRect, 36f, 36f, mapBoxStroke)
+        canvas.drawRoundRect(mapBox, 36f, 36f, mapPaint)
+        canvas.drawRoundRect(mapBox, 36f, 36f, mapBorder)
 
-        // Draw Route inside the Map Box
-        val routeInnerBounds = RectF(140f, 400f, 940f, 1020f)
+        // Draw Map Route in top card
+        val mapRouteBounds = RectF(120f, 200f, 960f, 700f)
         drawProjectedRoute(
             canvas = canvas,
             points = points,
-            bounds = routeInnerBounds,
-            strokeColor = 0xFF10B981.toInt(),
-            glowColor = 0x9906B6D4.toInt(),
+            bounds = mapRouteBounds,
+            strokeColor = 0xFFD4FF00.toInt(),
+            glowColor = 0x88FF5722.toInt(),
             strokeWidth = 14f
         )
 
-        // Telemetry Grid (6 Metrics)
-        val gridY1 = 1140f
-        val gridY2 = 1320f
-        val gridY3 = 1500f
+        // Activity Title & Date Banner
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 48f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText(title.take(24), 80f, 850f, titlePaint)
 
-        drawStatPill(canvas, 80f, gridY1, 440f, "DISTANCE", "%.2f km".format(distanceKm), 0xFF10B981.toInt())
-        drawStatPill(canvas, 560f, gridY1, 440f, "TIME", formatDuration(durationSeconds), 0xFF06B6D4.toInt())
+        val dateStr = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.US).format(Date(startTime))
+        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(148, 163, 184)
+            textSize = 28f
+        }
+        canvas.drawText(dateStr, 80f, 895f, datePaint)
 
-        drawStatPill(canvas, 80f, gridY2, 440f, "AVG SPEED", "%.1f km/h".format(avgSpeedKmh), Color.WHITE)
-        drawStatPill(canvas, 560f, gridY2, 440f, "MAX SPEED", "%.1f km/h".format(maxSpeedKmh), Color.WHITE)
+        // Middle Section: Split Metrics Table (940..1440)
+        val gridY1 = 940f
+        val gridY2 = 1110f
+        val gridY3 = 1280f
 
-        drawStatPill(canvas, 80f, gridY3, 440f, "ELEVATION GAIN", "+%.0f m".format(elevationGainM), 0xFFF59E0B.toInt())
-        drawStatPill(canvas, 560f, gridY3, 440f, "ENERGY", "$calories kcal", 0xFFF43F5E.toInt())
+        drawMetricBox(canvas, 70f, gridY1, 450f, "DISTANCE", "%.2f km".format(distanceKm), 0xFFD4FF00.toInt())
+        drawMetricBox(canvas, 560f, gridY1, 450f, "TIME", formatDuration(durationSeconds), Color.WHITE)
 
-        // Bottom Footer
-        val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        drawMetricBox(canvas, 70f, gridY2, 450f, "AVG SPEED", "%.1f km/h".format(avgSpeedKmh), Color.WHITE)
+        drawMetricBox(canvas, 560f, gridY2, 450f, "MAX SPEED", "%.1f km/h".format(maxSpeedKmh), 0xFF00F2FE.toInt())
+
+        drawMetricBox(canvas, 70f, gridY3, 450f, "ELEV GAIN", "+%.0f m".format(elevationGainM), 0xFFFF5722.toInt())
+        drawMetricBox(canvas, 560f, gridY3, 450f, "ENERGY", "$calories kcal", Color.WHITE)
+
+        // Bottom Section: Elevation Profile Wave Graph (1460..1720)
+        val chartBox = RectF(70f, 1460f, 1010f, 1720f)
+        canvas.drawRoundRect(chartBox, 28f, 28f, mapPaint)
+        canvas.drawRoundRect(chartBox, 28f, 28f, mapBorder)
+
+        drawMiniElevationWave(canvas, points, RectF(100f, 1490f, 980f, 1690f))
+
+        // Bottom Watermark
+        val brand = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(100, 116, 139)
             textSize = 26f
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("Tracked with BikeRoute • Zero-Cost / Open Source GIS", 540f, 1780f, footerPaint)
+        canvas.drawText("PERFORMANCE TELEMETRY • BIKEROUTE", 540f, 1790f, brand)
 
         return bitmap
     }
 
-    private fun drawStatPill(
+    private fun drawMetricBox(
         canvas: Canvas,
         x: Float,
         y: Float,
@@ -278,46 +480,94 @@ object SocialStoryExporter {
     ) {
         val rect = RectF(x, y, x + width, y + 140f)
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(180, 30, 41, 59)
+            color = Color.rgb(19, 26, 41)
             style = Paint.Style.FILL
         }
-        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(40, 255, 255, 255)
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
         canvas.drawRoundRect(rect, 24f, 24f, bgPaint)
-        canvas.drawRoundRect(rect, 24f, 24f, strokePaint)
+        canvas.drawRoundRect(rect, 24f, 24f, borderPaint)
 
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(148, 163, 184)
             textSize = 24f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            letterSpacing = 0.05f
+            letterSpacing = 0.08f
         }
-        canvas.drawText(label, x + 30f, y + 46f, labelPaint)
+        canvas.drawText(label, x + 28f, y + 46f, labelPaint)
 
         val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = valueColor
             textSize = 46f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText(value, x + 30f, y + 108f, valuePaint)
+        canvas.drawText(value, x + 28f, y + 108f, valuePaint)
     }
 
-    private fun drawMetric(canvas: Canvas, label: String, value: String, x: Float, y: Float) {
+    private fun drawBigMetric(canvas: Canvas, label: String, value: String, x: Float, y: Float, valueColor: Int) {
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(148, 163, 184)
             textSize = 24f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            letterSpacing = 0.08f
         }
         val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            color = valueColor
             textSize = 48f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         canvas.drawText(label, x, y, labelPaint)
-        canvas.drawText(value, x, y + 60f, valuePaint)
+        canvas.drawText(value, x, y + 62f, valuePaint)
+    }
+
+    private fun drawMiniElevationWave(canvas: Canvas, points: List<TrackPoint>, bounds: RectF) {
+        val elevations = if (points.size >= 2) points.map { it.altitude } else listOf(30.0, 45.0, 50.0, 38.0, 60.0)
+        val minElev = elevations.minOrNull() ?: 0.0
+        val maxElev = elevations.maxOrNull() ?: 100.0
+        val range = (maxElev - minElev).coerceAtLeast(10.0)
+
+        val stepX = bounds.width() / (elevations.size - 1).coerceAtLeast(1)
+        val path = Path()
+        val fillPath = Path()
+
+        elevations.forEachIndexed { i, elev ->
+            val normY = ((elev - minElev) / range).toFloat()
+            val px = bounds.left + i * stepX
+            val py = bounds.bottom - (normY * (bounds.height() - 20f)) - 10f
+
+            if (i == 0) {
+                path.moveTo(px, py)
+                fillPath.moveTo(px, bounds.bottom)
+                fillPath.lineTo(px, py)
+            } else {
+                path.lineTo(px, py)
+                fillPath.lineTo(px, py)
+            }
+        }
+        fillPath.lineTo(bounds.right, bounds.bottom)
+        fillPath.close()
+
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, bounds.top, 0f, bounds.bottom,
+                intArrayOf(Color.argb(80, 212, 255, 0), Color.argb(5, 212, 255, 0)),
+                null,
+                Shader.TileMode.CLAMP
+            )
+            style = Paint.Style.FILL
+        }
+        canvas.drawPath(fillPath, fillPaint)
+
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFD4FF00.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+            strokeCap = Paint.Cap.ROUND
+        }
+        canvas.drawPath(path, strokePaint)
     }
 
     private fun drawProjectedRoute(
@@ -329,12 +579,11 @@ object SocialStoryExporter {
         strokeWidth: Float
     ) {
         if (points.isEmpty()) {
-            // Draw placeholder curve if no points
             val dummyPath = Path().apply {
                 moveTo(bounds.left + 50f, bounds.bottom - 80f)
                 cubicTo(
-                    bounds.left + 200f, bounds.top + 60f,
-                    bounds.right - 200f, bounds.bottom - 40f,
+                    bounds.left + 220f, bounds.top + 60f,
+                    bounds.right - 220f, bounds.bottom - 40f,
                     bounds.right - 50f, bounds.top + 80f
                 )
             }
@@ -352,7 +601,6 @@ object SocialStoryExporter {
         var minLon = points.minOf { it.longitude }
         var maxLon = points.maxOf { it.longitude }
 
-        // Prevent division by zero for single-point or straight-line routes
         if (maxLat - minLat < 0.0001) {
             minLat -= 0.0005
             maxLat += 0.0005
@@ -365,7 +613,6 @@ object SocialStoryExporter {
         val dLat = maxLat - minLat
         val dLon = maxLon - minLon
 
-        // Aspect ratio preservation
         val boundW = bounds.width()
         val boundH = bounds.height()
         val scaleX = boundW / dLon
@@ -377,7 +624,6 @@ object SocialStoryExporter {
 
         fun project(pt: TrackPoint): Pair<Float, Float> {
             val px = (offsetX + (pt.longitude - minLon) * scale).toFloat()
-            // Invert latitude for Y-axis (North is up)
             val py = (offsetY + (maxLat - pt.latitude) * scale).toFloat()
             return Pair(px, py)
         }
@@ -391,17 +637,17 @@ object SocialStoryExporter {
             path.lineTo(proj.first, proj.second)
         }
 
-        // Draw glow layer
+        // Glow Layer
         val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = glowColor
             style = Paint.Style.STROKE
-            this.strokeWidth = strokeWidth * 2.2f
+            this.strokeWidth = strokeWidth * 2.4f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
         canvas.drawPath(path, glowPaint)
 
-        // Draw main route polyline
+        // Core Sharp Neon Path
         val mainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = strokeColor
             style = Paint.Style.STROKE
@@ -411,9 +657,9 @@ object SocialStoryExporter {
         }
         canvas.drawPath(path, mainPaint)
 
-        // Draw Start Pin (Neon Green circle)
+        // Start Pin (Green)
         val startPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF10B981.toInt()
+            color = 0xFFD4FF00.toInt()
             style = Paint.Style.FILL
         }
         val pinBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -421,13 +667,13 @@ object SocialStoryExporter {
             style = Paint.Style.STROKE
             this.strokeWidth = 6f
         }
-        canvas.drawCircle(firstProj.first, firstProj.second, 20f, startPaint)
-        canvas.drawCircle(firstProj.first, firstProj.second, 20f, pinBorder)
+        canvas.drawCircle(firstProj.first, firstProj.second, 22f, startPaint)
+        canvas.drawCircle(firstProj.first, firstProj.second, 22f, pinBorder)
 
-        // Draw End Pin (Amber / Coral circle)
+        // Finish Pin (Strava Orange)
         val lastProj = project(points.last())
         val endPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFF43F5E.toInt()
+            color = 0xFFFF5722.toInt()
             style = Paint.Style.FILL
         }
         canvas.drawCircle(lastProj.first, lastProj.second, 22f, endPaint)

@@ -1,7 +1,11 @@
 package com.example.export
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.example.model.TrackPoint
@@ -18,6 +22,53 @@ object GpxExporter {
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
+    /**
+     * Downloads/saves the GPX file directly to device Downloads/BikeRoute folder.
+     */
+    fun saveGpxToDownloads(
+        context: Context,
+        title: String,
+        startTime: Long,
+        points: List<TrackPoint>
+    ): Boolean {
+        return try {
+            val sanitizedTitle = title.replace(Regex("[^a-zA-Z0-9_]"), "_").take(24)
+            val fileName = "bikeroute_${sanitizedTitle}_${startTime}.gpx"
+            val gpxContent = buildGpxXml(title, startTime, points)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/gpx+xml")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/BikeRoute")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(gpxContent.toByteArray(Charsets.UTF_8))
+                }
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                context.contentResolver.update(uri, contentValues, null, null)
+                true
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val targetDir = File(downloadsDir, "BikeRoute")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                val targetFile = File(targetDir, fileName)
+                targetFile.writeText(gpxContent, Charsets.UTF_8)
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("GpxExporter", "Failed to save GPX to downloads: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Exports GPX to cache and launches intent chooser.
+     */
     fun exportAndShareGpx(
         context: Context,
         title: String,
